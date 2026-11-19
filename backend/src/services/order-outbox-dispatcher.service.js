@@ -12,9 +12,11 @@ const QUEUE_CLOSE_TIMEOUT_MS = 4000;
 
 function withTimeout(promise, timeoutMs, message) {
   let timer;
+  const operationPromise = Promise.resolve(promise);
+  operationPromise.catch(() => {});
 
   return Promise.race([
-    Promise.resolve(promise),
+    operationPromise,
     new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error(message)), timeoutMs);
     }),
@@ -215,6 +217,10 @@ function createOrderOutboxDispatcher({
     if (events.length === 0) {
       return { claimed: 0, dispatched: 0, failed: 0 };
     }
+
+    logger?.info?.(
+      "[Outbox Dispatcher] Claimed " + events.length + " outbox event(s).",
+    );
 
     let dispatched = 0;
     let failed = 0;
@@ -467,6 +473,13 @@ function createOrderOutboxDispatcher({
           );
 
           dispatched += 1;
+          logger?.info?.(
+            "[Outbox Dispatcher] Dispatched event " +
+              event.id +
+              " for order " +
+              event.order_id +
+              ".",
+          );
         } catch (error) {
           failed += 1;
 
@@ -485,6 +498,14 @@ function createOrderOutboxDispatcher({
                 Promise.resolve().then(() => releaseForRetry(event, error)),
                 enqueueTimeoutMs,
                 "Timed out releasing outbox event " + event.id + " for retry",
+              );
+              logger?.warn?.(
+                "[Outbox Dispatcher] Released event " +
+                  event.id +
+                  " (order " +
+                  event.order_id +
+                  ") for retry after failure: " +
+                  error.message,
               );
             } catch (releaseError) {
               logger.error(
